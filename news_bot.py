@@ -5,8 +5,8 @@ import google.generativeai as genai
 import requests
 
 
-DISCORD_WEBHOOK = os.environ["https://discord.com/api/webhooks/1529510585224532128/qGFOpHh_CYb69nfFSvDfJgVnJM7lk8Qp2BB7v0drl2LM1cxhqMdpMIc40D6565yClryU"]
-genai.configure(api_key=os.environ["AQ.Ab8RN6IUj8tgCr3QwxjkVlUpebEDIV-uqf0CnoRhTrx1BVs4wA"])
+DISCORD_WEBHOOK = os.environ["GEMINI_API_KEY"]
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 FEEDS = [
     "https://news.google.com/rss/search?q=AI+models+when:1d&hl=en-US&gl=US&ceid=US:en",
