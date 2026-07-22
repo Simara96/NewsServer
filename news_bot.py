@@ -3,21 +3,58 @@ import feedparser
 import requests
 from google import genai
 
-DISCORD_WEBHOOK = os.environ["DISCORD_WEBHOOK_URL"]
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-FEEDS = [
-    "https://news.google.com/rss/search?q=AI+models+when:1d&hl=en-US&gl=US&ceid=US:en",
-    "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "https://www.artificialintelligence-news.com/feed/",
-]
+TOPICS = {
+    "ai": {
+        "webhook": os.environ["DISCORD_WEBHOOK_URL"],
+        "feeds": [
+            "https://news.google.com/rss/search?q=AI+models+when:1d&hl=en-US&gl=US&ceid=US:en",
+            "https://techcrunch.com/category/artificial-intelligence/feed/",
+            "https://www.artificialintelligence-news.com/feed/",
+        ],
+        "prompt": """Here are today's raw AI/AI-model news items (titles, links, snippets).
+
+{items}
+
+Write a concise Discord-friendly digest:
+- Group related stories together, drop duplicates/near-duplicates
+- 1-2 sentences per story max, plain language
+- Keep the source link for each story
+- Use Discord markdown (bold headers with **, bullet points with -)
+- Skip anything not actually about AI/AI models (ignore unrelated results)
+- Keep the whole thing under 1800 characters total
+""",
+    },
+    "gaming": {
+        "webhook": os.environ.get("GAMING_DISCORD_WEBHOOK_URL"),
+        "feeds": [
+            "https://news.google.com/rss/search?q=free+PC+games+when:1d&hl=en-US&gl=US&ceid=US:en",
+            "https://www.pcgamer.com/rss/",
+            "https://store.steampowered.com/feeds/news/",
+        ],
+        "prompt": """Here are today's raw free PC gaming news items (titles, links, snippets).
+
+{items}
+
+Write a concise Discord-friendly digest:
+- Group related stories together, drop duplicates/near-duplicates
+- Focus on FREE games, deals, giveaways, and free-to-play news
+- 1-2 sentences per story max, plain language
+- Keep the source link for each story
+- Use Discord markdown (bold headers with **, bullet points with -)
+- Skip anything not about free PC games or gaming deals
+- Keep the whole thing under 1800 characters total
+""",
+    },
+}
 
 MAX_PER_FEED = 6
 
 
-def fetch_all():
+def fetch_all(feeds):
     items = []
-    for url in FEEDS:
+    for url in feeds:
         feed = feedparser.parse(url)
         for entry in feed.entries[:MAX_PER_FEED]:
             summary = getattr(entry, "summary", "")
@@ -27,23 +64,12 @@ def fetch_all():
     return items
 
 
-def summarize(items):
+def summarize(items, prompt_template):
     if not items:
         return None
 
     raw_text = "\n---\n".join(items)
-    prompt = f"""Here are today's raw AI/AI-model news items (titles, links, snippets).
-
-{raw_text}
-
-Write a concise Discord-friendly digest:
-- Group related stories together, drop duplicates/near-duplicates
-- 1-2 sentences per story max, plain language
-- Keep the source link for each story
-- Use Discord markdown (bold headers with **, bullet points with -)
-- Skip anything not actually about AI/AI models (ignore unrelated results)
-- Keep the whole thing under 1800 characters total
-"""
+    prompt = prompt_template.format(items=raw_text)
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -52,23 +78,30 @@ Write a concise Discord-friendly digest:
     return response.text
 
 
-def post_to_discord(text):
+def post_to_discord(webhook, text):
     if not text:
         print("Nothing to post.")
         return
     if len(text) > 1900:
         text = text[:1900] + "\n...(truncated)"
-    resp = requests.post(DISCORD_WEBHOOK, json={"content": text}, timeout=30)
+    resp = requests.post(webhook, json={"content": text}, timeout=30)
     resp.raise_for_status()
     print("Posted to Discord successfully.")
 
 
 if __name__ == "__main__":
-    items = fetch_all()
-    print(f"Fetched {len(items)} items")
+    for topic, config in TOPICS.items():
+        webhook = config["webhook"]
+        if not webhook:
+            print(f"Skipping {topic}: no webhook configured")
+            continue
 
-    digest = summarize(items)
-    print("---DIGEST---")
-    print(digest)
+        print(f"\n=== {topic.upper()} ===")
+        items = fetch_all(config["feeds"])
+        print(f"Fetched {len(items)} items")
 
-    post_to_discord(digest)
+        digest = summarize(items, config["prompt"])
+        print("---DIGEST---")
+        print(digest)
+
+        post_to_discord(webhook, digest)
