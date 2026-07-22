@@ -47,6 +47,28 @@ Write a concise Discord-friendly digest:
 - Keep the whole thing under 1800 characters total
 """,
     },
+    "tech_srbija": {
+        "webhook": os.environ.get("TECH_SRBija_DISCORD_WEBHOOK_URL"),
+        "feeds": [
+            "https://news.google.com/rss/search?q=tech+Srbija+when:1d&hl=sr&gl=RS&ceid=RS:sr",
+            "https://www.startit.rs/feed/",
+            "https://pcpress.rs/feed/",
+            "https://www.benchmark.rs/feed",
+        ],
+        "prompt": """Here are today's raw tech news items from Serbia (titles, links, snippets).
+
+{items}
+
+Write a concise Discord-friendly digest in Serbian:
+- Group related stories together, drop duplicates/near-duplicates
+- Focus on Serbian tech scene, startups, IT industry, digital transformation
+- 1-2 sentences per story max, plain language
+- Keep the source link for each story
+- Use Discord markdown (bold headers with **, bullet points with -)
+- Skip anything not related to tech in Serbia
+- Keep the whole thing under 1800 characters total
+""",
+    },
 }
 
 MAX_PER_FEED = 6
