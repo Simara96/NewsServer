@@ -5,7 +5,7 @@ import google.generativeai as genai
 import requests
 
 
-DISCORD_WEBHOOK = os.environ["GEMINI_API_KEY"]
+DISCORD_WEBHOOK = os.environ["DISCORD_WEBHOOK_URL"]
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 FEEDS = [
