@@ -1,12 +1,10 @@
 import os
-
 import feedparser
-import google.generativeai as genai
 import requests
-
+from google import genai
 
 DISCORD_WEBHOOK = os.environ["DISCORD_WEBHOOK_URL"]
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 FEEDS = [
     "https://news.google.com/rss/search?q=AI+models+when:1d&hl=en-US&gl=US&ceid=US:en",
@@ -24,9 +22,7 @@ def fetch_all():
         for entry in feed.entries[:MAX_PER_FEED]:
             summary = getattr(entry, "summary", "")
             items.append(
-                f"Title: {entry.title}\n"
-                f"Link: {entry.link}\n"
-                f"Snippet: {summary}\n"
+                f"Title: {entry.title}\nLink: {entry.link}\nSnippet: {summary}\n"
             )
     return items
 
@@ -49,19 +45,30 @@ Write a concise Discord-friendly digest:
 - Keep the whole thing under 1800 characters total
 """
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
     return response.text
 
 
 def post_to_discord(text):
     if not text:
+        print("Nothing to post.")
         return
     if len(text) > 1900:
         text = text[:1900] + "\n...(truncated)"
-    requests.post(DISCORD_WEBHOOK, json={"content": text}, timeout=30)
+    resp = requests.post(DISCORD_WEBHOOK, json={"content": text}, timeout=30)
+    resp.raise_for_status()
+    print("Posted to Discord successfully.")
 
 
 if __name__ == "__main__":
-    digest = summarize(fetch_all())
+    items = fetch_all()
+    print(f"Fetched {len(items)} items")
+
+    digest = summarize(items)
+    print("---DIGEST---")
+    print(digest)
+
     post_to_discord(digest)
