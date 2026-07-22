@@ -21,4 +21,5 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{secrets.DISCORD_WEBHOOK_URL}}
           GAMING_DISCORD_WEBHOOK_URL: ${{secrets.GAMING_DISCORD_WEBHOOK_URL}}
+          TECH_SRBija_DISCORD_WEBHOOK_URL: ${{secrets.TECH_SRBija_DISCORD_WEBHOOK_URL}}
           GEMINI_API_KEY: ${{secrets.GEMINI_API_KEY}}
