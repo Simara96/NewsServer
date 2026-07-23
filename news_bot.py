@@ -54,7 +54,7 @@ Write a concise Discord-friendly digest:
         "webhook": os.environ.get("GAME_DEALS_DISCORD_WEBHOOK_URL"),
         "feeds": [
             "https://store.steampowered.com/feeds/newreleases.xml",
-            "https://store.steampowered.com/feeds/top sellers.xml",
+            "https://store.steampowered.com/feeds/topsellers.xml",
             "https://www.gog.com/games/rss",
             "https://store.epicgames.com/en-US/free-games",
             "https://gg.deals/rss/",
