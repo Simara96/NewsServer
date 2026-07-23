@@ -9,20 +9,23 @@ TOPICS = {
     "ai": {
         "webhook": os.environ["DISCORD_WEBHOOK_URL"],
         "feeds": [
-            "https://news.google.com/rss/search?q=AI+models+when:1d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=new+AI+model+release+when:1d&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=GPT+Claude+Gemini+Llama+new+model+when:1d&hl=en-US&gl=US&ceid=US:en",
             "https://techcrunch.com/category/artificial-intelligence/feed/",
-            "https://www.artificialintelligence-news.com/feed/",
+            "https://huggingface.co/blog/feed.xml",
         ],
-        "prompt": """Here are today's raw AI/AI-model news items (titles, links, snippets).
+        "prompt": """Here are today's raw AI model news items (titles, links, snippets).
 
 {items}
 
 Write a concise Discord-friendly digest:
 - Group related stories together, drop duplicates/near-duplicates
+- Focus on NEW AI model releases, announcements, and benchmarks from major companies (OpenAI, Anthropic, Google, Meta, Mistral, etc.)
+- Include details like model name, company, and key capabilities if mentioned
 - 1-2 sentences per story max, plain language
 - Keep the source link for each story
 - Use Discord markdown (bold headers with **, bullet points with -)
-- Skip anything not actually about AI/AI models (ignore unrelated results)
+- Skip general AI opinion pieces, ethics debates, or non-model news
 - Keep the whole thing under 1800 characters total
 """,
     },
@@ -50,22 +53,23 @@ Write a concise Discord-friendly digest:
     "tech_srbija": {
         "webhook": os.environ.get("TECH_SRBija_DISCORD_WEBHOOK_URL"),
         "feeds": [
-            "https://news.google.com/rss/search?q=tech+Srbija+when:1d&hl=sr&gl=RS&ceid=RS:sr",
-            "https://www.startit.rs/feed/",
-            "https://pcpress.rs/feed/",
+            "https://news.google.com/rss/search?q=popusti+tehnika+Srbija+when:1d&hl=sr&gl=RS&ceid=RS:sr",
+            "https://news.google.com/rss/search?q=akcije+telefoni+laptopovi+Srbija+when:1d&hl=sr&gl=RS&ceid=RS:sr",
+            "https://www.tehnomanija.rs/feed",
+            "https://www.kupujemprodajem.com/rss",
             "https://www.benchmark.rs/feed",
         ],
-        "prompt": """Here are today's raw tech news items from Serbia (titles, links, snippets).
+        "prompt": """Here are today's raw tech deal/discount news items from Serbia (titles, links, snippets).
 
 {items}
 
 Write a concise Discord-friendly digest in Serbian:
 - Group related stories together, drop duplicates/near-duplicates
-- Focus on Serbian tech scene, startups, IT industry, digital transformation
+- Focus on tech deals, discounts, phone/laptop/hardware sales and offers in Serbia
 - 1-2 sentences per story max, plain language
 - Keep the source link for each story
 - Use Discord markdown (bold headers with **, bullet points with -)
-- Skip anything not related to tech in Serbia
+- Skip anything not related to tech deals or hardware discounts in Serbia
 - Keep the whole thing under 1800 characters total
 """,
     },
