@@ -50,6 +50,31 @@ Write a concise Discord-friendly digest:
 - Keep the whole thing under 1800 characters total
 """,
     },
+    "game_deals": {
+        "webhook": os.environ.get("GAME_DEALS_DISCORD_WEBHOOK_URL"),
+        "feeds": [
+            "https://store.steampowered.com/feeds/newreleases.xml",
+            "https://store.steampowered.com/feeds/top sellers.xml",
+            "https://www.gog.com/games/rss",
+            "https://store.epicgames.com/en-US/free-games",
+            "https://gg.deals/rss/",
+            "https://www.cheapshark.com/rss/deals",
+        ],
+        "prompt": """Here are today's raw game deal/discount news items (titles, links, snippets).
+
+{items}
+
+Write a concise Discord-friendly digest:
+- Group related stories together, drop duplicates/near-duplicates
+- Focus on FREE games, significant discounts, and sales on Steam, Epic Games Store, and GOG
+- Include original and sale prices if mentioned
+- 1-2 sentences per story max, plain language
+- Keep the source link for each story
+- Use Discord markdown (bold headers with **, bullet points with -)
+- Skip anything not related to game deals or discounts
+- Keep the whole thing under 1800 characters total
+""",
+    },
     "tech_srbija": {
         "webhook": os.environ.get("TECH_SRBija_DISCORD_WEBHOOK_URL"),
         "feeds": [
