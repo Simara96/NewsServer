@@ -8,7 +8,7 @@ client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 TOPICS = {
     "ai": {
-        "webhook": os.environ["DISCORD_WEBHOOK_URL"],
+        "webhook": os.environ.get("DISCORD_WEBHOOK_URL"),
         "feeds": [
             "https://news.google.com/rss/search?q=new+AI+model+release+when:1d&hl=en-US&gl=US&ceid=US:en",
             "https://news.google.com/rss/search?q=GPT+Claude+Gemini+Llama+new+model+when:1d&hl=en-US&gl=US&ceid=US:en",
