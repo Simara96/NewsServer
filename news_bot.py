@@ -1,4 +1,5 @@
 import os
+import re
 import feedparser
 import requests
 from google import genai
@@ -101,6 +102,21 @@ Write a concise Discord-friendly digest in Serbian:
 - Keep the whole thing under 1800 characters total
 """,
     },
+    "gorivo": {
+        "webhook": os.environ.get("GORIVO_DISCORD_WEBHOOK_URL"),
+        "type": "scrape",
+        "url": "https://obavesti.rs/en/fuel",
+        "prompt": """Here are the current fuel prices in Serbia:
+
+{items}
+
+Write a short Discord-friendly update in Serbian:
+- Show current prices for all fuel types with price changes
+- Use Discord markdown (bold with **)
+- Keep it under 500 characters
+- Add source link: https://benzinko.com
+""",
+    },
 }
 
 MAX_PER_FEED = 6
@@ -118,15 +134,57 @@ def fetch_all(feeds):
     return items
 
 
-def summarize(items, prompt_template):
-    if not items:
+def scrape_fuel_prices(url):
+    resp = requests.get(url, timeout=30)
+    text = resp.text
+
+    fuel_data = {}
+    fuel_names = ["Petrol 95", "Petrol 98", "Petrol 100", "Diesel", "Diesel\\+", "LPG"]
+    fuel_labels = ["BMB 95", "BMB 98", "BMB 100", "Dizel", "Dizel+", "LPG/TNG"]
+    change_pattern = r"[+\-]?\d+\.\d+\s*RSD"
+
+    for i, (fuel, label) in enumerate(zip(fuel_names, fuel_labels)):
+        changes = re.findall(f"{fuel}.*?{change_pattern}", text)
+        if changes:
+            last_change = changes[0]
+            change_match = re.search(r"([+\-]?\d+\.\d+)\s*RSD", last_change)
+            if change_match:
+                fuel_data[label] = change_match.group(1) + " RSD"
+
+    prices_section = re.findall(
+        r"font-semibold[^>]*>(\d+\.\d+)<!-- --> RSD", text
+    )
+
+    if prices_section and len(prices_section) >= 12:
+        fuel_data["BMB 95"] = prices_section[0] + " RSD"
+        fuel_data["BMB 98"] = prices_section[2] + " RSD"
+        fuel_data["BMB 100"] = prices_section[4] + " RSD"
+        fuel_data["Dizel"] = prices_section[6] + " RSD"
+        fuel_data["Dizel+"] = prices_section[8] + " RSD"
+        fuel_data["LPG/TNG"] = prices_section[10] + " RSD"
+
+    changes = re.findall(
+        r"font-medium text-(?:red|green)-600\">([+\-]?\d+\.\d+) RSD", text
+    )
+
+    result = []
+    labels = ["BMB 95", "BMB 98", "BMB 100", "Dizel", "Dizel+", "LPG/TNG"]
+    for idx, label in enumerate(labels):
+        price = fuel_data.get(label, "N/A")
+        change = changes[idx] if idx < len(changes) else "?"
+        result.append(f"{label}: {price} ({change} RSD)")
+
+    return "\n".join(result)
+
+
+def summarize(items_text, prompt_template):
+    if not items_text:
         return None
 
-    raw_text = "\n---\n".join(items)
-    prompt = prompt_template.format(items=raw_text)
+    prompt = prompt_template.format(items=items_text)
 
     response = client.models.generate_content(
-        model="gemini-3.1-flash-lite",
+        model="gemini-2.5-flash",
         contents=prompt,
     )
     return response.text
@@ -144,17 +202,29 @@ def post_to_discord(webhook, text):
 
 
 if __name__ == "__main__":
+    run_gorivo_only = os.environ.get("RUN_GORIVO_ONLY") == "true"
+
     for topic, config in TOPICS.items():
+        if run_gorivo_only and topic != "gorivo":
+            continue
+        if not run_gorivo_only and topic == "gorivo":
+            continue
+
         webhook = config["webhook"]
         if not webhook:
             print(f"Skipping {topic}: no webhook configured")
             continue
 
         print(f"\n=== {topic.upper()} ===")
-        items = fetch_all(config["feeds"])
-        print(f"Fetched {len(items)} items")
 
-        digest = summarize(items, config["prompt"])
+        if config.get("type") == "scrape":
+            items_text = scrape_fuel_prices(config["url"])
+        else:
+            items = fetch_all(config["feeds"])
+            print(f"Fetched {len(items)} items")
+            items_text = "\n---\n".join(items)
+
+        digest = summarize(items_text, config["prompt"])
         print("---DIGEST---")
         print(digest)
 
