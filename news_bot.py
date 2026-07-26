@@ -105,16 +105,16 @@ Write a concise Discord-friendly digest in Serbian:
     "gorivo": {
         "webhook": os.environ.get("GORIVO_DISCORD_WEBHOOK_URL"),
         "type": "scrape",
-        "url": "https://obavesti.rs/en/fuel",
-        "prompt": """Here are the current fuel prices in Serbia:
+        "url": "https://cenoteka.rs/cene-goriva/",
+        "prompt": """Here are the current fuel prices in Serbia from cenoteka.rs:
 
 {items}
 
 Write a short Discord-friendly update in Serbian:
-- Show current prices for all fuel types with price changes
+- Show current prices for all fuel types
 - Use Discord markdown (bold with **)
 - Keep it under 500 characters
-- Add source link: https://benzinko.com
+- Add source link: https://cenoteka.rs/cene-goriva/
 """,
     },
 }
@@ -138,43 +138,29 @@ def scrape_fuel_prices(url):
     resp = requests.get(url, timeout=30)
     text = resp.text
 
-    fuel_data = {}
-    fuel_names = ["Petrol 95", "Petrol 98", "Petrol 100", "Diesel", "Diesel\\+", "LPG"]
-    fuel_labels = ["BMB 95", "BMB 98", "BMB 100", "Dizel", "Dizel+", "LPG/TNG"]
-    change_pattern = r"[+\-]?\d+\.\d+\s*RSD"
+    fuel_prices = {}
 
-    for i, (fuel, label) in enumerate(zip(fuel_names, fuel_labels)):
-        changes = re.findall(f"{fuel}.*?{change_pattern}", text)
-        if changes:
-            last_change = changes[0]
-            change_match = re.search(r"([+\-]?\d+\.\d+)\s*RSD", last_change)
-            if change_match:
-                fuel_data[label] = change_match.group(1) + " RSD"
+    fuel_patterns = {
+        "Benzin BMB 95": "BMB 95",
+        "Evro Dizel": "Dizel",
+        "Auto Gas - TNG": "LPG/TNG",
+        "Benzin BMB 100": "BMB 100",
+        "Evro Dizel \\(Premijum\\)": "Dizel+",
+    }
 
-    prices_section = re.findall(
-        r"font-semibold[^>]*>(\d+\.\d+)<!-- --> RSD", text
-    )
-
-    if prices_section and len(prices_section) >= 12:
-        fuel_data["BMB 95"] = prices_section[0] + " RSD"
-        fuel_data["BMB 98"] = prices_section[2] + " RSD"
-        fuel_data["BMB 100"] = prices_section[4] + " RSD"
-        fuel_data["Dizel"] = prices_section[6] + " RSD"
-        fuel_data["Dizel+"] = prices_section[8] + " RSD"
-        fuel_data["LPG/TNG"] = prices_section[10] + " RSD"
-
-    changes = re.findall(
-        r"font-medium text-(?:red|green)-600\">([+\-]?\d+\.\d+) RSD", text
-    )
+    for fuel_name, label in fuel_patterns.items():
+        pattern = fuel_name + r".*?(\d+[\.,]\d+)"
+        match = re.search(pattern, text)
+        if match:
+            price = match.group(1).replace(",", ".")
+            fuel_prices[label] = price + " RSD"
 
     result = []
-    labels = ["BMB 95", "BMB 98", "BMB 100", "Dizel", "Dizel+", "LPG/TNG"]
-    for idx, label in enumerate(labels):
-        price = fuel_data.get(label, "N/A")
-        change = changes[idx] if idx < len(changes) else "?"
-        result.append(f"{label}: {price} ({change} RSD)")
+    for label in ["BMB 95", "Dizel", "LPG/TNG", "BMB 100", "Dizel+"]:
+        if label in fuel_prices:
+            result.append(f"{label}: {fuel_prices[label]}")
 
-    return "\n".join(result)
+    return "\n".join(result) if result else "Cene nisu dostupne"
 
 
 def summarize(items_text, prompt_template):
