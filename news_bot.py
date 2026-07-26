@@ -117,6 +117,21 @@ Write a short Discord-friendly update in Serbian:
 - Add source link: https://cenoteka.rs/cene-goriva/
 """,
     },
+    "kursevi": {
+        "webhook": os.environ.get("KURSEVI_DISCORD_WEBHOOK_URL"),
+        "type": "api",
+        "prompt": """Here are the current exchange rates for Serbian Dinar (RSD):
+
+{items}
+
+Write a short Discord-friendly update in Serbian:
+- Show EUR, USD, CHF, GBP rates against RSD
+- Show if rate went up or down compared to yesterday
+- Use Discord markdown (bold with **)
+- Keep it under 500 characters
+- Add source: NBS (Narodna banka Srbije)
+""",
+    },
 }
 
 MAX_PER_FEED = 6
@@ -163,6 +178,33 @@ def scrape_fuel_prices(url):
     return "\n".join(result) if result else "Cene nisu dostupne"
 
 
+def fetch_exchange_rates():
+    resp = requests.get("https://api.frankfurter.dev/v2/rates?base=RSD", timeout=30)
+    data = resp.json()
+
+    currencies = {
+        "EUR": "Evro",
+        "USD": "Američki dolar",
+        "CHF": "Švajcarski franak",
+        "GBP": "Britanska funta",
+    }
+
+    rates = {}
+    date = ""
+    for item in data:
+        if item["quote"] in currencies:
+            rates[item["quote"]] = item["rate"]
+            date = item["date"]
+
+    result = [f"Kurs RSD ({date}):\n"]
+    for code, name in currencies.items():
+        if code in rates:
+            rsd_per_unit = 1 / rates[code]
+            result.append(f"1 {code} = {rsd_per_unit:.2f} RSD ({name})")
+
+    return "\n".join(result)
+
+
 def summarize(items_text, prompt_template):
     if not items_text:
         return None
@@ -205,6 +247,8 @@ if __name__ == "__main__":
 
         if config.get("type") == "scrape":
             items_text = scrape_fuel_prices(config["url"])
+        elif config.get("type") == "api":
+            items_text = fetch_exchange_rates()
         else:
             items = fetch_all(config["feeds"])
             print(f"Fetched {len(items)} items")
