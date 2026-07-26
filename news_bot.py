@@ -125,7 +125,7 @@ Write a short Discord-friendly update in Serbian:
 {items}
 
 Write a short Discord-friendly update in Serbian:
-- Show EUR, USD, CHF, GBP rates against RSD
+- Show EUR, USD, CHF, GBP, CAD rates against RSD
 - Show if rate went up or down compared to yesterday
 - Use Discord markdown (bold with **)
 - Keep it under 500 characters
@@ -187,6 +187,7 @@ def fetch_exchange_rates():
         "USD": "Američki dolar",
         "CHF": "Švajcarski franak",
         "GBP": "Britanska funta",
+        "CAD": "Kanadski dolar",
     }
 
     rates = {}
