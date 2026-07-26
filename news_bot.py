@@ -120,16 +120,15 @@ Write a short Discord-friendly update in Serbian:
     "kursevi": {
         "webhook": os.environ.get("KURSEVI_DISCORD_WEBHOOK_URL"),
         "type": "api",
-        "prompt": """Here are the current exchange rates for Serbian Dinar (RSD):
+        "prompt": """Here are the current official middle exchange rates from the National Bank of Serbia (NBS):
 
 {items}
 
 Write a short Discord-friendly update in Serbian:
 - Show EUR, USD, CHF, GBP, CAD rates against RSD
-- Show if rate went up or down compared to yesterday
 - Use Discord markdown (bold with **)
 - Keep it under 500 characters
-- Add source: NBS (Narodna banka Srbije)
+- Mention it's the official NBS srednji kurs
 """,
     },
 }
@@ -179,7 +178,7 @@ def scrape_fuel_prices(url):
 
 
 def fetch_exchange_rates():
-    resp = requests.get("https://api.frankfurter.dev/v2/rates?base=RSD", timeout=30)
+    resp = requests.get("https://kurs.resenje.org/api/v1/rates/today", timeout=30)
     data = resp.json()
 
     currencies = {
@@ -192,17 +191,17 @@ def fetch_exchange_rates():
 
     rates = {}
     date = ""
-    for item in data:
-        if item["quote"] in currencies:
-            rates[item["quote"]] = item["rate"]
+    for item in data.get("rates", []):
+        if item["code"] in currencies:
+            rates[item["code"]] = item["exchange_middle"]
             date = item["date"]
 
     result = [f"Kurs RSD ({date}):\n"]
     for code, name in currencies.items():
         if code in rates:
-            rsd_per_unit = 1 / rates[code]
-            result.append(f"1 {code} = {rsd_per_unit:.2f} RSD ({name})")
+            result.append(f"1 {code} = {rates[code]:.2f} RSD ({name})")
 
+    result.append("\nIzvor: Narodna banka Srbije (kurs.resenje.org)")
     return "\n".join(result)
 
 
@@ -257,6 +256,6 @@ if __name__ == "__main__":
 
         digest = summarize(items_text, config["prompt"])
         print("---DIGEST---")
-        print(digest)
+        print(digest.encode("utf-8", errors="replace").decode("utf-8"))
 
         post_to_discord(webhook, digest)
