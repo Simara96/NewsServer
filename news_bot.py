@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import feedparser
 import requests
 from google import genai
@@ -246,7 +247,17 @@ if __name__ == "__main__":
         print(f"\n=== {topic.upper()} ===")
 
         if config.get("type") == "scrape":
-            items_text = scrape_fuel_prices(config["url"])
+            max_retries = 4
+            for attempt in range(max_retries):
+                try:
+                    items_text = scrape_fuel_prices(config["url"])
+                except Exception as e:
+                    items_text = f"Greška pri preuzimanju cena goriva: {e}"
+                if "Cene nisu dostupne" not in items_text:
+                    break
+                print(f"Cene goriva nisu dostupne, pokušaj ponovo za 1h ({attempt + 1}/{max_retries})...")
+                if attempt < max_retries - 1:
+                    time.sleep(3600)
         elif config.get("type") == "api":
             items_text = fetch_exchange_rates()
         else:
