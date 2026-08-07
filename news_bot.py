@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import json
 import feedparser
 import requests
 from google import genai
@@ -150,25 +151,46 @@ def fetch_all(feeds):
 
 
 def scrape_fuel_prices(url):
-    resp = requests.get(url, timeout=30)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    }
+    resp = requests.get(url, timeout=30, headers=headers)
     text = resp.text
 
-    fuel_prices = {}
+    marker = '__NEXT_DATA__" type="application/json">'
+    start = text.find(marker)
+    if start == -1:
+        return "Cene nisu dostupne"
 
-    fuel_patterns = {
+    start += len(marker)
+    end = text.find("</script>", start)
+    if end == -1:
+        return "Cene nisu dostupne"
+
+    data = json.loads(text[start:end])
+    products = data.get("props", {}).get("pageProps", {}).get("products", [])
+
+    fuel_names = {
         "Benzin BMB 95": "BMB 95",
         "Evro Dizel": "Dizel",
         "Auto Gas - TNG": "LPG/TNG",
         "Benzin BMB 100": "BMB 100",
-        "Evro Dizel \\(Premijum\\)": "Dizel+",
+        "Evro Dizel (Premijum)": "Dizel+",
     }
 
-    for fuel_name, label in fuel_patterns.items():
-        pattern = fuel_name + r".*?(\d+[\.,]\d+)"
-        match = re.search(pattern, text)
-        if match:
-            price = match.group(1).replace(",", ".")
-            fuel_prices[label] = price + " RSD"
+    fuel_prices = {}
+    for p in products:
+        if p["name"] in fuel_names:
+            prices = [
+                pr["current_price"]
+                for pr in p.get("prices", [])
+                if pr.get("current_price")
+            ]
+            if prices:
+                cheapest = min(prices)
+                if cheapest == int(cheapest):
+                    cheapest = int(cheapest)
+                fuel_prices[fuel_names[p["name"]]] = f"{cheapest} RSD"
 
     result = []
     for label in ["BMB 95", "Dizel", "LPG/TNG", "BMB 100", "Dizel+"]:
