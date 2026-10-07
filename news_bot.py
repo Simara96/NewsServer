@@ -1,7 +1,7 @@
 import os
 import re
+import html
 import time
-import json
 import feedparser
 import requests
 from google import genai
@@ -157,18 +157,9 @@ def scrape_fuel_prices(url):
     resp = requests.get(url, timeout=30, headers=headers)
     text = resp.text
 
-    marker = '__NEXT_DATA__" type="application/json">'
-    start = text.find(marker)
-    if start == -1:
-        return "Cene nisu dostupne"
-
-    start += len(marker)
-    end = text.find("</script>", start)
-    if end == -1:
-        return "Cene nisu dostupne"
-
-    data = json.loads(text[start:end])
-    products = data.get("props", {}).get("pageProps", {}).get("products", [])
+    # cenoteka.rs no longer ships __NEXT_DATA__; each product card carries
+    # data-name / data-price attributes with the cheapest price instead
+    matches = re.findall(r'data-name="([^"]+)"[^>]*?data-price="([\d.]+)"', text)
 
     fuel_names = {
         "Benzin BMB 95": "BMB 95",
@@ -179,18 +170,13 @@ def scrape_fuel_prices(url):
     }
 
     fuel_prices = {}
-    for p in products:
-        if p["name"] in fuel_names:
-            prices = [
-                pr["current_price"]
-                for pr in p.get("prices", [])
-                if pr.get("current_price")
-            ]
-            if prices:
-                cheapest = min(prices)
-                if cheapest == int(cheapest):
-                    cheapest = int(cheapest)
-                fuel_prices[fuel_names[p["name"]]] = f"{cheapest} RSD"
+    for name, price in matches:
+        name = html.unescape(name)
+        if name in fuel_names and fuel_names[name] not in fuel_prices:
+            cheapest = float(price)
+            if cheapest == int(cheapest):
+                cheapest = int(cheapest)
+            fuel_prices[fuel_names[name]] = f"{cheapest} RSD"
 
     result = []
     for label in ["BMB 95", "Dizel", "LPG/TNG", "BMB 100", "Dizel+"]:
