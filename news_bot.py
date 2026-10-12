@@ -118,19 +118,17 @@ Write a short Discord-friendly update in Serbian:
 - Add source link: https://cenoteka.rs/cene-goriva/
 """,
         # used when cenoteka.rs blocks the request (Cloudflare often blocks GitHub runners)
-        "fallback_feeds": [
-            "https://news.google.com/rss/search?q=nove+cene+goriva+Srbija+when:3d&hl=sr&gl=RS&ceid=RS:sr",
-        ],
-        "fallback_prompt": """Here are today's news items about fuel prices (titles, links, snippets).
+        "fallback_url": "https://nafta.hr/sr/cene-goriva-srbija/",
+        "fallback_prompt": """Here are the current fuel prices in Serbia per gas station company from nafta.hr:
 
 {items}
 
 Write a short Discord-friendly update in Serbian:
-- Show the current fuel prices IN SERBIA (BMB 95, Evro Dizel, and others if mentioned) and until when they are valid
-- Ignore prices from other countries (Hrvatska, BiH, etc.)
+- For each fuel type (Eurodizel, Eurodizel Premium, BMB 95, BMB 95 Premium, BMB 100, Autoplin/TNG) show the lowest price in RSD
+- Mention until when the prices are valid
 - Use Discord markdown (bold with **)
 - Keep it under 500 characters
-- Add the source link of the article you used
+- Do not add any links
 """,
     },
     "kursevi": {
@@ -199,6 +197,26 @@ def scrape_fuel_prices(url):
             result.append(f"{label}: {fuel_prices[label]}")
 
     return "\n".join(result) if result else "Cene nisu dostupne"
+
+
+def scrape_nafta_prices(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    }
+    resp = requests.get(url, timeout=30, headers=headers)
+    print(f"nafta.hr status: {resp.status_code}, {len(resp.text)} bytes")
+
+    # strip scripts/styles and tags, keep the price tables as plain text
+    text = re.sub(r"(?s)<(script|style).*?</\1>", "", resp.text)
+    text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text)))
+
+    start = text.find("Datum ažuriranja")
+    if start == -1 or "RSD" not in text[start:]:
+        return None
+    # the price tables end where the FAQ section starts
+    faq = text.find("najčešća pitanja", start)
+    block = text[start:faq] if faq != -1 else text[start:start + 3000]
+    return block.strip()
 
 
 def fetch_exchange_rates():
@@ -277,10 +295,15 @@ if __name__ == "__main__":
                 print(f"Greška pri preuzimanju cena goriva: {e}")
                 items_text = "Cene nisu dostupne"
             if "Cene nisu dostupne" in items_text:
-                print("cenoteka.rs nije dostupna, koristim vesti o cenama goriva")
-                items = fetch_all(config["fallback_feeds"])
-                print(f"Fetched {len(items)} items")
-                items_text = "\n---\n".join(items)
+                print("cenoteka.rs nije dostupna, koristim nafta.hr")
+                try:
+                    items_text = scrape_nafta_prices(config["fallback_url"])
+                except Exception as e:
+                    print(f"Greška pri preuzimanju sa nafta.hr: {e}")
+                    items_text = None
+                if not items_text:
+                    print("Cene goriva nisu dostupne ni na nafta.hr, preskačem")
+                    continue
                 prompt = config["fallback_prompt"]
         elif config.get("type") == "api":
             items_text = fetch_exchange_rates()
