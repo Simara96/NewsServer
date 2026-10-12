@@ -1,7 +1,6 @@
 import os
 import re
 import html
-import time
 import feedparser
 import requests
 from google import genai
@@ -118,6 +117,21 @@ Write a short Discord-friendly update in Serbian:
 - Keep it under 500 characters
 - Add source link: https://cenoteka.rs/cene-goriva/
 """,
+        # used when cenoteka.rs blocks the request (Cloudflare often blocks GitHub runners)
+        "fallback_feeds": [
+            "https://news.google.com/rss/search?q=nove+cene+goriva+Srbija+when:3d&hl=sr&gl=RS&ceid=RS:sr",
+        ],
+        "fallback_prompt": """Here are today's news items about fuel prices (titles, links, snippets).
+
+{items}
+
+Write a short Discord-friendly update in Serbian:
+- Show the current fuel prices IN SERBIA (BMB 95, Evro Dizel, and others if mentioned) and until when they are valid
+- Ignore prices from other countries (Hrvatska, BiH, etc.)
+- Use Discord markdown (bold with **)
+- Keep it under 500 characters
+- Add the source link of the article you used
+""",
     },
     "kursevi": {
         "webhook": os.environ.get("KURSEVI_DISCORD_WEBHOOK_URL"),
@@ -155,6 +169,7 @@ def scrape_fuel_prices(url):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     }
     resp = requests.get(url, timeout=30, headers=headers)
+    print(f"cenoteka.rs status: {resp.status_code}, {len(resp.text)} bytes")
     text = resp.text
 
     # cenoteka.rs no longer ships __NEXT_DATA__; each product card carries
@@ -254,18 +269,19 @@ if __name__ == "__main__":
 
         print(f"\n=== {topic.upper()} ===")
 
+        prompt = config["prompt"]
         if config.get("type") == "scrape":
-            max_retries = 4
-            for attempt in range(max_retries):
-                try:
-                    items_text = scrape_fuel_prices(config["url"])
-                except Exception as e:
-                    items_text = f"Greška pri preuzimanju cena goriva: {e}"
-                if "Cene nisu dostupne" not in items_text:
-                    break
-                print(f"Cene goriva nisu dostupne, pokušaj ponovo za 1h ({attempt + 1}/{max_retries})...")
-                if attempt < max_retries - 1:
-                    time.sleep(3600)
+            try:
+                items_text = scrape_fuel_prices(config["url"])
+            except Exception as e:
+                print(f"Greška pri preuzimanju cena goriva: {e}")
+                items_text = "Cene nisu dostupne"
+            if "Cene nisu dostupne" in items_text:
+                print("cenoteka.rs nije dostupna, koristim vesti o cenama goriva")
+                items = fetch_all(config["fallback_feeds"])
+                print(f"Fetched {len(items)} items")
+                items_text = "\n---\n".join(items)
+                prompt = config["fallback_prompt"]
         elif config.get("type") == "api":
             items_text = fetch_exchange_rates()
         else:
@@ -273,7 +289,7 @@ if __name__ == "__main__":
             print(f"Fetched {len(items)} items")
             items_text = "\n---\n".join(items)
 
-        digest = summarize(items_text, config["prompt"])
+        digest = summarize(items_text, prompt)
         print("---DIGEST---")
         print(digest.encode("utf-8", errors="replace").decode("utf-8"))
 
