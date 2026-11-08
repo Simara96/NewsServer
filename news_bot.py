@@ -54,26 +54,19 @@ Write a concise Discord-friendly digest:
     },
     "game_deals": {
         "webhook": os.environ.get("GAME_DEALS_DISCORD_WEBHOOK_URL"),
-        "feeds": [
-            "https://store.steampowered.com/feeds/newreleases.xml",
-            "https://store.steampowered.com/feeds/topsellers.xml",
-            "https://www.gog.com/games/rss",
-            "https://store.epicgames.com/en-US/free-games",
-            "https://gg.deals/rss/",
-            "https://www.cheapshark.com/rss/deals",
-        ],
-        "prompt": """Here are today's raw game deal/discount news items (titles, links, snippets).
+        "type": "deals",
+        "prompt": """Here are today's current game deals and discounts (titles, links, prices).
 
 {items}
 
 Write a concise Discord-friendly digest:
-- Group related stories together, drop duplicates/near-duplicates
-- Focus on FREE games, significant discounts, and sales on Steam, Epic Games Store, and GOG
-- Include original and sale prices if mentioned
-- 1-2 sentences per story max, plain language
-- Keep the source link for each story
+- Group related deals together, drop duplicates/near-duplicates
+- Focus on FREE games and the biggest discounts on Steam, Epic Games Store, and GOG
+- Always include the sale price, the original price, and the discount percentage
+- 1-2 sentences per deal max, plain language
+- Keep the source link for each deal
 - Use Discord markdown (bold headers with **, bullet points with -)
-- Skip anything not related to game deals or discounts
+- Skip anything that is not an actual discount or a free game
 - Keep the whole thing under 1800 characters total
 """,
     },
@@ -149,16 +142,206 @@ Write a short Discord-friendly update in Serbian:
 
 MAX_PER_FEED = 6
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+}
+
 
 def fetch_all(feeds):
     items = []
+    seen = set()
     for url in feeds:
         feed = feedparser.parse(url)
         for entry in feed.entries[:MAX_PER_FEED]:
+            link = getattr(entry, "link", "")
+            if link in seen:
+                continue
+            seen.add(link)
             summary = getattr(entry, "summary", "")
             items.append(
-                f"Title: {entry.title}\nLink: {entry.link}\nSnippet: {summary}\n"
+                f"Title: {entry.title}\nLink: {link}\nSnippet: {summary}\n"
             )
+    return items
+
+
+def _discount_items(store, deals, limit):
+    """Format a list of (discount_percent, title, link, price_line) tuples."""
+    deals.sort(key=lambda d: (-d[0], d[1].lower()))
+    items = []
+    for pct, title, link, price in deals[:limit]:
+        if pct >= 100:
+            deal_line = f"Deal: FREE on {store} — {price}\n"
+        else:
+            deal_line = f"Deal: -{pct}% on {store} — {price}\n"
+        items.append(f"Title: {title}\nLink: {link}\n{deal_line}")
+    return items
+
+
+def fetch_steam_deals(limit=10):
+    # The old feeds (newreleases.xml / topsellers.xml) are Steam *news*, not
+    # discounts, so they returned the same news page every run. The specials
+    # section of featuredcategories has real discount_percent/price values.
+    resp = requests.get(
+        "https://store.steampowered.com/api/featuredcategories?cc=us&l=en",
+        timeout=30,
+        headers=HEADERS,
+    )
+    resp.raise_for_status()
+
+    deals = []
+    for item in resp.json().get("specials", {}).get("items", []):
+        pct = item.get("discount_percent", 0)
+        if not item.get("discounted") or pct <= 0:
+            continue
+        currency = item.get("currency", "USD")
+        symbol = {"USD": "$", "EUR": "€", "GBP": "£"}.get(currency, "")
+        final = item.get("final_price", 0) / 100
+        original = item.get("original_price", 0) / 100
+        price = f"{symbol}{final:.2f} (was {symbol}{original:.2f})"
+        deals.append(
+            (
+                pct,
+                item["name"],
+                f"https://store.steampowered.com/app/{item['id']}/",
+                price,
+            )
+        )
+    return _discount_items("Steam", deals, limit)
+
+
+def fetch_gog_deals(limit=8):
+    resp = requests.get(
+        "https://catalog.gog.com/v1/catalog?limit=20&order=desc:discount"
+        "&productType=in:game&countryCode=US&locale=en-US&currencyCode=USD",
+        timeout=30,
+        headers=HEADERS,
+    )
+    resp.raise_for_status()
+
+    deals = []
+    for product in resp.json().get("products", []):
+        price = product.get("price", {})
+        try:
+            pct = abs(int(price.get("discount", "0").strip("-%")))
+        except ValueError:
+            pct = 0
+        if pct <= 0:
+            continue
+        price_line = f"{price.get('final')} (was {price.get('base')})"
+        deals.append(
+            (
+                pct,
+                product["title"],
+                product["storeLink"],
+                price_line,
+            )
+        )
+    return _discount_items("GOG", deals, limit)
+
+
+def fetch_cheapshark_deals(limit=8):
+    resp = requests.get(
+        "https://www.cheapshark.com/api/1.0/deals"
+        "?storeID=1&onSale=1&pageSize=20&sortBy=Recent",
+        timeout=30,
+        headers=HEADERS,
+    )
+    resp.raise_for_status()
+
+    deals = []
+    for deal in resp.json():
+        try:
+            pct = int(float(deal.get("savings", 0)))
+        except (TypeError, ValueError):
+            pct = 0
+        if pct <= 0:
+            continue
+        price_line = (
+            f"${float(deal['salePrice']):.2f} "
+            f"(was ${float(deal['normalPrice']):.2f})"
+        )
+        deals.append(
+            (
+                pct,
+                deal["title"],
+                f"https://www.cheapshark.com/redirect?dealID={deal['dealID']}",
+                price_line,
+            )
+        )
+    return _discount_items("Steam", deals, limit)
+
+
+def fetch_epic_deals(limit=8):
+    resp = requests.get(
+        "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+        "?locale=en-US&country=US&allowCountries=US",
+        timeout=30,
+        headers=HEADERS,
+    )
+    resp.raise_for_status()
+
+    deals = []
+    for game in resp.json()["data"]["Catalog"]["searchStore"]["elements"]:
+        offers = (game.get("promotions") or {}).get("promotionalOffers") or []
+        if not offers:
+            continue
+        offer = offers[0]["promotionalOffers"][0]
+        total = game.get("price", {}).get("totalPrice", {})
+        original = total.get("originalPrice", 0)
+        if original <= 0:
+            continue
+        final = total.get("discountPrice", 0)
+        pct = round((original - final) / original * 100)
+        if pct <= 0:
+            continue
+        fmt = total.get("fmtPrice", {})
+        price_line = f"{fmt.get('discountPrice')} (was {fmt.get('originalPrice')})"
+        if final == 0:
+            price_line = f"was {fmt.get('originalPrice')}"
+        page_slug = None
+        for mapping in game.get("offerMappings") or []:
+            if mapping.get("pageType") == "productHome":
+                page_slug = mapping.get("pageSlug")
+                break
+        page_slug = page_slug or game.get("productSlug") or game.get("urlSlug")
+        link = (
+            f"https://store.epicgames.com/en-US/p/{page_slug}"
+            if page_slug
+            else "https://store.epicgames.com/en-US/free-games"
+        )
+        deals.append(
+            (
+                pct,
+                game["title"],
+                link,
+                f"{price_line}, until {offer['endDate'][:10]}",
+            )
+        )
+    return _discount_items("Epic Games", deals, limit)
+
+
+def fetch_game_deals():
+    """Collect real discounts from the stores and remove cross-source duplicates."""
+    items = []
+    seen_titles = set()
+    sources = [
+        ("Steam", fetch_steam_deals),
+        ("GOG", fetch_gog_deals),
+        ("Epic", fetch_epic_deals),
+        ("CheapShark", fetch_cheapshark_deals),
+    ]
+    for name, fetch in sources:
+        try:
+            source_items = fetch()
+        except Exception as e:
+            print(f"Greška pri preuzimanju {name} dealova: {e}")
+            continue
+        for item in source_items:
+            title = item.split("\n", 1)[0].removeprefix("Title: ").strip().casefold()
+            if title in seen_titles:
+                continue
+            seen_titles.add(title)
+            items.append(item)
     return items
 
 
@@ -307,6 +490,10 @@ if __name__ == "__main__":
                 prompt = config["fallback_prompt"]
         elif config.get("type") == "api":
             items_text = fetch_exchange_rates()
+        elif config.get("type") == "deals":
+            items = fetch_game_deals()
+            print(f"Fetched {len(items)} deal items")
+            items_text = "\n---\n".join(items)
         else:
             items = fetch_all(config["feeds"])
             print(f"Fetched {len(items)} items")
